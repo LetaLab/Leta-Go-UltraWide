@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Leta Go UltraWide</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <header class="header">
+    <span class="title">Leta Go UltraWide</span>
+    <label class="toggle" title="Enable or disable the extension">
+      <input type="checkbox" id="enabled">
+      <span class="slider"></span>
+    </label>
+  </header>
+
+  <label class="field-label" for="mode">Crop mode</label>
+  <select id="mode">
+    <option value="auto">Auto detect black bars</option>
+    <option value="off">Off</option>
+  </select>
+
+  <div id="alignmentField">
+    <label class="field-label field-label--spaced" for="alignment">Crop alignment</label>
+    <select id="alignment"></select>
+  </div>
+
+  <label class="field-label field-label--spaced" for="zoom">Zoom (<span id="zoomValue">100%</span>)</label>
+  <input type="range" id="zoom" min="80" max="160" step="5" value="100">
+
+  <label class="toggle-row" for="stretch">
+    <span class="field-label field-label--inline">Stretch instead of crop</span>
+    <span class="toggle">
+      <input type="checkbox" id="stretch">
+      <span class="slider"></span>
+    </span>
+  </label>
+
+  <p class="hint">Auto detect scans the playing video for black bars every second or so. Pick a fixed ratio instead if a
+    site needs it forced.</p>
+
+  <div class="status" id="status">Saved</div>
+
+  <a class="letalab-link" href="https://letalab.eu" target="_blank" rel="noopener noreferrer">
+    <img src="../icons/LetaLab-Favicon.png" alt="" class="letalab-icon">
+    <span>Visit LetaLab.eu</span>
+  </a>
+
+  <footer class="footer">Runs locally - no tracking, no network calls</footer>
+
+  <script src="../shared-constants.js"></script>
+  <script src="popup.js"></script>
+</body>
+
+</html>
