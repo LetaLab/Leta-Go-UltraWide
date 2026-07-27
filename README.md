@@ -1,7 +1,7 @@
 # Leta Go UltraWide
 
 <p align="left">  
-<img src="https://github.com/user-attachments/assets/79b0c0a6-6caa-4d3f-bebb-c1facc760e06" alt="OG" width="15%">
+<img src="https://github.com/user-attachments/assets/252140df-afda-45f1-8893-9d4cb2243005" alt="OG" width="15%">
 </p>
 
 ---
