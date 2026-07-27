@@ -29,7 +29,7 @@ Website is created by me and I do everything that is in my limited power to make
 
 | SSLLabs Server testing results |
 |---|
-| <!-- Replace with your own uploaded SSLLabs screenshot URL --> |
+| <a href="https://github.com/user-attachments/assets/9fe4044b-92f6-4de6-9e65-5fbf79fb4df2"><img width="50%" alt="SSLLabs Server testing results" src="https://github.com/user-attachments/assets/9fe4044b-92f6-4de6-9e65-5fbf79fb4df2" /></a> |
 
 ![Manifest](https://img.shields.io/badge/Manifest-V3-blue)
 ![Browsers](https://img.shields.io/badge/Chrome%20%7C%20Edge%20%7C%20Brave%20%7C%20Chromium-supported-blue)
@@ -65,7 +65,7 @@ Brave and other Chromium-based browsers can use the Chrome Web Store link above 
 
 | Popup | Auto detect in action |
 |---|---|
-| <a href="REPLACE-WITH-POPUP-SCREENSHOT-URL"><img width="100%" alt="Popup" src="REPLACE-WITH-POPUP-SCREENSHOT-URL" /></a> | <a href="REPLACE-WITH-CROP-SCREENSHOT-URL"><img width="100%" alt="Auto detect in action" src="REPLACE-WITH-CROP-SCREENSHOT-URL" /></a> |
+| <a href="https://github.com/user-attachments/assets/670bc654-8a90-40c0-a140-88cfa2d9c9d2"><img width="100%" alt="Popup" src="https://github.com/user-attachments/assets/670bc654-8a90-40c0-a140-88cfa2d9c9d2" /></a> | <a href="https://github.com/user-attachments/assets/55e37624-4efc-405d-a1f5-ef0e3fe908bb"><img width="100%" alt="Auto detect in action" src="https://github.com/user-attachments/assets/55e37624-4efc-405d-a1f5-ef0e3fe908bb" /></a> |
 
 ## Features
 
