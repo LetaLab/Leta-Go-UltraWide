@@ -1,8 +1,7 @@
 # Leta Go UltraWide
 
 <p align="left">  
-<!-- Replace with your own uploaded OG/mascot image URL, same as the other LetaLab READMEs -->
-<img src="REPLACE-WITH-OG-IMAGE-URL" alt="OG" width="15%">
+<img src="https://github.com/user-attachments/assets/79b0c0a6-6caa-4d3f-bebb-c1facc760e06" alt="OG" width="15%">
 </p>
 
 ---
@@ -13,8 +12,7 @@
 </p>
 
 <p align="center">
-<!-- Replace with your own uploaded icon-512 image URL -->
-  <img src="REPLACE-WITH-ICON-512-URL" alt="icon-512" width="220">
+  <img src="https://github.com/user-attachments/assets/e6230a1e-3fbd-48f7-965c-fdb42e52d370" alt="icon-512" width="220">
 </p>
 
 ---
