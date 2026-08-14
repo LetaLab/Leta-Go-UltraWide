@@ -17,6 +17,7 @@ const enabledToggle = document.getElementById('enabled');
 const zoomRange = document.getElementById('zoom');
 const zoomValue = document.getElementById('zoomValue');
 const stretchToggle = document.getElementById('stretch');
+const disableOnShortsToggle = document.getElementById('disableOnShorts');
 const status = document.getElementById('status');
 
 let statusTimer = null;
@@ -51,7 +52,7 @@ function showSaved() {
 // computeManualBars() in content.js, so it stays hidden the rest of the
 // time rather than sitting there looking like it should do something.
 function updateAlignmentVisibility() {
-  const isFixedRatio = modeSelect.value !== 'auto' && modeSelect.value !== 'off';
+  const isFixedRatio = modeSelect.value !== 'auto';
   alignmentField.classList.toggle('hidden', !isFixedRatio);
 }
 
@@ -62,6 +63,7 @@ function render(s) {
   zoomRange.value = s.zoom;
   zoomValue.textContent = s.zoom + '%';
   stretchToggle.checked = s.stretch;
+  disableOnShortsToggle.checked = s.disableOnShorts;
   updateAlignmentVisibility();
 }
 
@@ -92,6 +94,7 @@ modeSelect.addEventListener('change', () => {
 });
 alignmentSelect.addEventListener('change', () => save({ alignment: alignmentSelect.value }));
 stretchToggle.addEventListener('change', () => save({ stretch: stretchToggle.checked }));
+disableOnShortsToggle.addEventListener('change', () => save({ disableOnShorts: disableOnShortsToggle.checked }));
 
 zoomRange.addEventListener('input', () => {
   zoomValue.textContent = zoomRange.value + '%';

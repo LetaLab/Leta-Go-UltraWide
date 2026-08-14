@@ -11,10 +11,16 @@ const LetaGoShared = {
 
   DEFAULTS: {
     enabled: true,
-    mode: 'auto',       // off | auto | one of FIXED_MODES[].value
-    zoom: 100,           // percent, 100 = no extra zoom on top of the crop
+    mode: 'auto',         // auto | one of FIXED_MODES[].value | 'off' (legacy:
+                           // no longer offered in the popup, the enabled
+                           // toggle is the one off switch now, content.js
+                           // still honors an already-stored 'off' so nobody's
+                           // existing choice silently changes underneath them
+    zoom: 100,             // percent, 100 = no extra zoom on top of the crop
     stretch: false,
-    alignment: 'center'  // center | start | end, see ALIGNMENTS below
+    alignment: 'center',  // center | start | end, see ALIGNMENTS below
+    disableOnShorts: false // when true, skip youtube.com/shorts/... entirely,
+                            // see isSuppressedHere() in content.js
   },
 
   // Fixed-ratio crop modes, ordered narrowest to widest. `value` is what's

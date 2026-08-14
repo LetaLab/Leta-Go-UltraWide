@@ -19,7 +19,6 @@
   <label class="field-label" for="mode">Crop mode</label>
   <select id="mode">
     <option value="auto">Auto detect black bars</option>
-    <option value="off">Off</option>
   </select>
 
   <div id="alignmentField">
@@ -34,6 +33,14 @@
     <span class="field-label field-label--inline">Stretch instead of crop</span>
     <span class="toggle">
       <input type="checkbox" id="stretch">
+      <span class="slider"></span>
+    </span>
+  </label>
+
+  <label class="toggle-row" for="disableOnShorts">
+    <span class="field-label field-label--inline">Disable on YouTube Shorts</span>
+    <span class="toggle">
+      <input type="checkbox" id="disableOnShorts">
       <span class="slider"></span>
     </span>
   </label>

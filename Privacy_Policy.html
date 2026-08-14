@@ -4,12 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Privacy Policy - Leta Go UltraWide</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" size="any">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <main class="container policy">
     <h1>Privacy Policy - Leta Go UltraWide</h1>
-    <p class="updated">Last updated: July 26, 2026</p>
+    <p class="updated">Last updated: August 13, 2026</p>
 
     <p>
     Leta Go UltraWide is a browser extension for Chrome, Edge, Brave, and other Chromium-based
@@ -24,23 +25,25 @@
     pings of any kind - the extension never contacts any server, including one of its own. To
     find black bars automatically, it does briefly look at the pixels of the video you are
     watching, entirely inside your own browser; the next two sections explain exactly what
-    that means and why it never leaves your device. The only data it stores is five small
-    settings (crop mode, zoom level, stretch on/off, crop alignment, and whether the extension
-    itself is turned on), and that data never leaves your browser.
+    that means and why it never leaves your device. The only data it stores is six small
+    settings (crop mode, zoom level, stretch on/off, crop alignment, whether the extension
+    itself is turned on, and whether YouTube Shorts are skipped entirely), and that data never
+    leaves your browser.
     </p>
 
     <h2>What data is stored, and where</h2>
     <p>
-    The extension stores exactly five values, using the browser's built-in
+    The extension stores exactly six values, using the browser's built-in
     <code>chrome.storage.local</code> API (not <code>chrome.storage.sync</code> - these
     settings stay on this device and are not carried through your browser account's sync):
     </p>
     <ul>
-      <li>Your chosen crop mode (auto detect, off, or one of the fixed ratios)</li>
+      <li>Your chosen crop mode (auto detect, or one of the fixed ratios)</li>
       <li>Your chosen zoom level</li>
       <li>Whether stretch is used instead of crop</li>
       <li>Your chosen crop alignment for fixed-ratio modes (center, or biased to one edge)</li>
       <li>Whether the extension itself is enabled or disabled</li>
+      <li>Whether YouTube Shorts are skipped entirely</li>
     </ul>
     <p>
     This storage is provided by the browser itself, not by us. Because it uses
@@ -56,8 +59,10 @@
     is no way to know in advance which site, or which frame on that site, has the video
     player. On each page it looks for a video element (a short list of known player selectors
     first, then the largest visible one as a fallback) and, once found, applies a CSS crop to
-    that element. It does not read page text, forms, cookies, page navigation, or anything
-    else on the page - only the video element it is trying to crop.
+    that element. In Auto detect mode it also looks at the on-screen size, and computed
+    background color, of a small number of elements around the video, described in the next
+    section. It does not read page text, forms, cookies, page navigation, links, images, or
+    any other content on the page.
     </p>
     <p>
     When "Auto detect" mode is active, the extension draws the currently playing video frame
@@ -69,10 +74,24 @@
     pixels, and crop to the chosen ratio directly.
     </p>
     <p>
+    Auto detect also runs a second, independent check: it compares the video element's own
+    on-screen size against a handful of its parent elements, looking for one that fully
+    contains the video but is a noticeably different shape, with a dark background of its own,
+    rather than an ordinary part of the page's design. Some sites allocate more on-screen space
+    than a non-widescreen video actually needs and simply paint the leftover area, instead of
+    baking bars into the video itself, and that space never touches the video's own pixels, so
+    the pixel check above cannot see it. This check only reads element sizes (from the
+    browser's own layout engine) and computed background colors, both just numbers, never
+    element text, images, links, or any other content. Like everything else here, it is used
+    immediately to decide on a crop and is never written to storage, never leaves your device,
+    and never reaches any server.
+    </p>
+    <p>
     On sites that serve video through a protected or DRM-secured rendering path, the browser
-    itself blocks this kind of pixel access, and the extension fails quietly with no crop
-    applied in Auto detect mode there (fixed ratio modes are unaffected, since they don't need
-    pixel access at all).
+    itself blocks this kind of pixel access, and the pixel-based check fails quietly with no
+    result there (fixed ratio modes are unaffected, since they don't need pixel access at all,
+    and neither does the layout-based check above, since it never reads pixels in the first
+    place).
     </p>
 
     <h2>Link to letalab.eu</h2>

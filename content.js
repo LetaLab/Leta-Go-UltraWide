@@ -13,6 +13,14 @@
 (function () {
   'use strict';
 
+  // Unconditional, no flag needed: confirms the content script actually
+  // running here is this build. If this line never shows up in the
+  // console on a page this extension should be running on, the loaded
+  // code is stale (reload the unpacked extension in chrome://extensions)
+  // or this frame was never matched at all. Placed first, before
+  // anything below that could throw, so it fires either way.
+  console.log('[LetaGo] content script active (v' + chrome.runtime.getManifest().version + ')');
+
   // A short list of video elements we can identify with confidence by a
   // fixed CSS selector, checked before falling back to "biggest video on
   // the page". Jellyfin's own web client (GPL-2.0, verified against its
@@ -34,12 +42,26 @@
     w: 40,
     h: 24,
     darkCutoff: 24,      // 0-255 average brightness under this counts as "bar"
-    minContentLuma: 45,  // the middle of the frame must be at least this bright,
-                          // otherwise this is a full-frame fade/transition, not
-                          // real bars, see sampleBars()
+    minContentLuma: 45,  // fast path: if the middle of the frame clears this on
+                          // its own, trust the reading outright, see sampleBars()
+    minContrast: 20,     // fallback path: on a scene too dark to clear
+                          // minContentLuma by itself (a dark game scene, not a
+                          // fade), the middle is still trusted if it is at least
+                          // this much brighter than the bar rows/cols actually
+                          // detected. A real fade to black darkens everything
+                          // together, so center and bars stay close, this keeps
+                          // failing that case while no longer rejecting a bordered
+                          // video just because the whole scene is dim, see
+                          // sampleBars()
     minBarPct: 0.03,     // ignore anything thinner than 3% of the frame
     maxBarPct: 0.28,     // refuse to trust a "bar" thicker than 28%
-    confirmSamples: 2    // require this many matching readings before applying
+    confirmSamples: 2,   // require this many matching readings before applying
+    layoutMaxDepth: 6,   // how many ancestors of the video to check for an
+                          // enclosing container of a meaningfully different
+                          // shape, see detectContainerAspectRatio()
+    layoutMinMismatch: 0.08 // container vs video aspect ratio must differ by
+                             // at least this fraction to count as a real
+                             // mismatch rather than rounding noise
   };
 
   let settings = { ...LetaGoShared.DEFAULTS };
@@ -65,6 +87,25 @@
   async function loadSettings() {
     const data = await chrome.storage.local.get({ [LetaGoShared.GLOBAL_KEY]: LetaGoShared.DEFAULTS });
     settings = { ...LetaGoShared.DEFAULTS, ...data[LetaGoShared.GLOBAL_KEY] };
+  }
+
+  // True for a youtube.com/shorts/... URL. Path-based on purpose, not a
+  // DOM selector, the /shorts/ segment is a stable, public part of
+  // YouTube's own routing, unlike its internal markup (see the selector
+  // notes at the top of this file). Evaluated fresh on every call rather
+  // than cached, since YouTube is a single-page app and the same content
+  // script instance can see this change without a page reload.
+  function isYouTubeShort() {
+    return /(^|\.)youtube\.com$/.test(location.hostname) && location.pathname.startsWith('/shorts/');
+  }
+
+  // Bundles every reason, beyond the plain enabled/off setting, that this
+  // page should be treated as if the extension were off. Currently just
+  // the opt-in "disable on YouTube Shorts" case, kept as its own function
+  // so refresh(), applyCurrentCrop(), and the play listener in
+  // watchVideo() read one definition instead of three that could drift.
+  function isSuppressedHere() {
+    return settings.disableOnShorts && isYouTubeShort();
   }
 
   function updateObserverState() {
@@ -139,7 +180,7 @@
     // restarting it on play picks scanning back up without waiting for
     // the next settings change or DOM mutation to trigger a refresh().
     v.addEventListener('play', () => {
-      if (v !== video || !settings.enabled || settings.mode !== 'auto') return;
+      if (v !== video || !settings.enabled || isSuppressedHere() || settings.mode !== 'auto') return;
       startScan();
     });
     v.addEventListener('pause', () => {
@@ -243,17 +284,124 @@
     return { top, bottom, left: 0, right: 0 };
   }
 
+  // Set localStorage.setItem('letago-debug', '1') in the page's devtools
+  // console, then refresh the page, to see exactly what auto detect is
+  // measuring and deciding on each sample instead of guessing from a
+  // screenshot. localStorage on purpose, not a plain window property: a
+  // window property does not survive a page reload, localStorage does,
+  // so the flag stays on across the refresh this needs anyway. Filter
+  // the console for "LetaGo" to cut through everything else the page
+  // logs. Clear it again with localStorage.removeItem('letago-debug').
+  function letagoDebugEnabled() {
+    try {
+      return localStorage.getItem('letago-debug') === '1';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Parses a computed background-color into the same 0-255 luma scale
+  // sampleBars() already uses for pixels, so one darkness threshold
+  // (SCAN.darkCutoff) means the same thing in both places. Returns null
+  // for a color getComputedStyle cannot be parsed from, or one that is
+  // effectively transparent, alpha under 0.5, since a transparent
+  // element is not what is actually painting the area, whatever sits
+  // behind it is.
+  function backgroundLuma(el) {
+    const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/.exec(getComputedStyle(el).backgroundColor);
+    if (!m) return null;
+    const alpha = m[4] === undefined ? 1 : parseFloat(m[4]);
+    if (alpha < 0.5) return null;
+    return 0.299 * Number(m[1]) + 0.587 * Number(m[2]) + 0.114 * Number(m[3]);
+  }
+
+  // getBoundingClientRect() reflects any CSS transform currently applied
+  // to the element, offsetWidth/offsetHeight would not, but this needs
+  // position too, not just size, so instead the transform is held off
+  // for one synchronous read. Without this, once a crop from this very
+  // function is already active, the video's own box has grown to the
+  // scaled-up size on the next check, no longer looks smaller than its
+  // container, detectContainerAspectRatio() below finds nothing, the
+  // crop gets undone, the video shrinks back to its original size, the
+  // mismatch is found again, the crop re-applies, repeating forever, a
+  // visible flicker every couple of seconds. The clear and restore both
+  // happen before the browser gets a chance to paint anything in
+  // between, so this does not cause a visible flash on its own.
+  function measureUntransformed(v) {
+    const hadTransform = v.style.transform;
+    if (hadTransform) v.style.transform = '';
+    const rect = v.getBoundingClientRect();
+    if (hadTransform) {
+      v.style.transform = hadTransform;
+      if (letagoDebugEnabled()) console.debug('[LetaGo] measured with transform held off', { hadTransform, untransformedSize: Math.round(rect.width) + 'x' + Math.round(rect.height) });
+    }
+    return rect;
+  }
+
+  // The second, independent way auto detect looks for bars, alongside
+  // sampleBars() below. A site's own player can allocate more on-screen
+  // space than a non-16:9 video actually needs and paint the leftover
+  // area as background, letterboxing that never touches the video's own
+  // decoded pixels at all. drawImage() in sampleBars() only ever reads
+  // those pixels, so it structurally cannot see this case, no amount of
+  // threshold tuning changes that, the bars simply are not there to
+  // find. This instead walks up from the video comparing rendered boxes:
+  // find the nearest ancestor that still fully encloses the video but
+  // has a meaningfully different shape, confirm it has a dark background
+  // of its own rather than being ordinary page layout (padding, a
+  // sidebar), and hand its aspect ratio back the same way a fixed ratio
+  // preset would, computeManualBars() below does not need to know or
+  // care which source a target ratio came from. Returns null if nothing
+  // within SCAN.layoutMaxDepth ancestors qualifies.
+  function detectContainerAspectRatio(v) {
+    if (!v.videoWidth || !v.videoHeight) return null;
+    const nativeAR = v.videoWidth / v.videoHeight;
+
+    const videoRect = measureUntransformed(v);
+    if (videoRect.width < 2 || videoRect.height < 2) return null;
+
+    let el = v.parentElement;
+    for (let depth = 0; depth < SCAN.layoutMaxDepth && el; depth++, el = el.parentElement) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) continue; // a collapsed wrapper, e.g. our own, tells us nothing either way
+
+      const encloses = rect.left <= videoRect.left + 2 && rect.top <= videoRect.top + 2 &&
+        rect.right >= videoRect.right - 2 && rect.bottom >= videoRect.bottom - 2;
+      if (!encloses) break; // stepped outside the player's own box, nothing further up is relevant
+
+      const containerAR = rect.width / rect.height;
+      if (Math.abs(containerAR - nativeAR) / nativeAR < SCAN.layoutMinMismatch) continue; // same shape as the video, not the one
+
+      const bg = backgroundLuma(el);
+      if (bg !== null && bg < SCAN.darkCutoff) return containerAR;
+      // meaningfully different shape but no dark background of its own:
+      // more likely ordinary layout than a player's letterbox shell,
+      // keep walking in case a further ancestor is the real one
+    }
+    return null;
+  }
+
   function sampleBars(v) {
-    if (v.readyState < 2) return null;
+    if (v.readyState < 2) {
+      if (letagoDebugEnabled()) console.debug('[LetaGo] sampleBars skipped, readyState too low', v.readyState);
+      return null;
+    }
     try {
       ctx.drawImage(v, 0, 0, SCAN.w, SCAN.h);
     } catch (e) {
-      return null; // cross-origin canvas taint or similar, give up quietly
+      // Cross-origin canvas taint, or a DRM-protected rendering path, see
+      // the README's Known issues. Silent by default on purpose, this is
+      // normal and expected on some sites, not a bug, but logged under
+      // letago-debug since it is otherwise indistinguishable from "no
+      // bars found".
+      if (letagoDebugEnabled()) console.debug('[LetaGo] drawImage failed, canvas tainted or DRM-protected', e);
+      return null;
     }
     let data;
     try {
       data = ctx.getImageData(0, 0, SCAN.w, SCAN.h).data;
     } catch (e) {
+      if (letagoDebugEnabled()) console.debug('[LetaGo] getImageData failed, canvas tainted or DRM-protected', e);
       return null;
     }
 
@@ -272,13 +420,38 @@
       return sum / SCAN.h < SCAN.darkCutoff;
     };
 
-    // Sanity check before trusting any edge reading at all: is there
-    // real picture in the middle of the frame? A full-frame fade to
-    // black, a loading spinner on a black background, or the gap
-    // between two videos all look like "bars on every edge" if we
-    // only ever look at the edges. Requiring the center to be
-    // meaningfully brighter than the dark cutoff avoids treating those
-    // moments as a black-bar frame and clamping to a maximal crop.
+    // Find candidate bars first, then decide whether to trust them.
+    // Checking trust after the walk, against what the walk actually
+    // found, is what lets a dark-but-real scene be told apart from a
+    // fade below, an absolute floor checked before the walk cannot make
+    // that distinction. maxRow/maxCol are the grid-cell cap expressed as
+    // a float; flooring it before the loop keeps the actual result at or
+    // under SCAN.maxBarPct instead of one grid step over it.
+    const maxRowSteps = Math.floor(SCAN.h * SCAN.maxBarPct);
+    const maxColSteps = Math.floor(SCAN.w * SCAN.maxBarPct);
+
+    let top = 0, bottom = 0, left = 0, right = 0;
+    while (top < maxRowSteps && rowIsDark(top)) top++;
+    while (bottom < maxRowSteps && rowIsDark(SCAN.h - 1 - bottom)) bottom++;
+    while (left < maxColSteps && colIsDark(left)) left++;
+    while (right < maxColSteps && colIsDark(SCAN.w - 1 - right)) right++;
+
+    if (!top && !bottom && !left && !right) {
+      if (letagoDebugEnabled()) console.debug('[LetaGo] sampleBars ran, no dark edges found');
+      return { top: 0, bottom: 0, left: 0, right: 0 }; // nothing dark found, nothing to sanity-check
+    }
+
+    // Sanity check before trusting the walk above: is there real picture
+    // in the middle of the frame, distinct from what just got flagged as
+    // bars? A full-frame fade to black, a loading spinner on a black
+    // background, or the gap between two videos all look like "bars on
+    // every edge" if only the edges are checked, and they darken the
+    // middle right along with them, so center and bar brightness stay
+    // close together there. A real bordered video does not, the bars
+    // stay dark while the middle holds real picture, even on a dark
+    // scene that never clears minContentLuma on its own. Passing either
+    // check is enough to trust the reading, so an ordinary bright scene
+    // still passes the same fast way it always did.
     const cx0 = Math.floor(SCAN.w * 0.25);
     const cx1 = Math.ceil(SCAN.w * 0.75);
     const cy0 = Math.floor(SCAN.h * 0.25);
@@ -292,21 +465,37 @@
       }
     }
     const centerLuma = centerCount ? centerSum / centerCount : 0;
-    if (centerLuma < SCAN.minContentLuma) {
-      return { top: 0, bottom: 0, left: 0, right: 0 };
+
+    let barSum = 0;
+    let barCount = 0;
+    for (let y = 0; y < top; y++) {
+      for (let x = 0; x < SCAN.w; x++) { barSum += luma(x, y); barCount++; }
     }
+    for (let y = 0; y < bottom; y++) {
+      for (let x = 0; x < SCAN.w; x++) { barSum += luma(x, SCAN.h - 1 - y); barCount++; }
+    }
+    for (let x = 0; x < left; x++) {
+      for (let y = 0; y < SCAN.h; y++) { barSum += luma(x, y); barCount++; }
+    }
+    for (let x = 0; x < right; x++) {
+      for (let y = 0; y < SCAN.h; y++) { barSum += luma(SCAN.w - 1 - x, y); barCount++; }
+    }
+    const barLuma = barCount ? barSum / barCount : 0;
 
-    // maxRow/maxCol are the grid-cell cap expressed as a float; flooring
-    // it before the loop keeps the actual result at or under
-    // SCAN.maxBarPct instead of one grid step over it.
-    const maxRowSteps = Math.floor(SCAN.h * SCAN.maxBarPct);
-    const maxColSteps = Math.floor(SCAN.w * SCAN.maxBarPct);
-
-    let top = 0, bottom = 0, left = 0, right = 0;
-    while (top < maxRowSteps && rowIsDark(top)) top++;
-    while (bottom < maxRowSteps && rowIsDark(SCAN.h - 1 - bottom)) bottom++;
-    while (left < maxColSteps && colIsDark(left)) left++;
-    while (right < maxColSteps && colIsDark(SCAN.w - 1 - right)) right++;
+    const passesAbsolute = centerLuma >= SCAN.minContentLuma;
+    const passesContrast = (centerLuma - barLuma) >= SCAN.minContrast;
+    if (letagoDebugEnabled()) {
+      console.debug('[LetaGo] sampleBars', {
+        candidateSteps: { top, bottom, left, right },
+        centerLuma: Math.round(centerLuma),
+        barLuma: Math.round(barLuma),
+        passesAbsolute, passesContrast,
+        trusted: passesAbsolute || passesContrast
+      });
+    }
+    if (!passesAbsolute && !passesContrast) {
+      return { top: 0, bottom: 0, left: 0, right: 0 }; // looks like a fade/transition, not real bars
+    }
 
     const bars = {
       top: top / SCAN.h,
@@ -339,7 +528,7 @@
   // style watchdog and the fullscreenchange listener call to reassert a
   // crop that something else on the page disturbed.
   function applyCurrentCrop() {
-    if (!video || !settings.enabled) return;
+    if (!video || !settings.enabled || isSuppressedHere()) return;
 
     if (settings.mode === 'off') {
       resetVideo(video);
@@ -357,8 +546,18 @@
   }
 
   function tick() {
-    if (!video || video.paused) return;
-    const bars = sampleBars(video);
+    if (!video || video.paused) {
+      if (letagoDebugEnabled()) console.debug('[LetaGo] tick skipped, no video or paused', { hasVideo: !!video, paused: video ? video.paused : null });
+      return;
+    }
+
+    let bars = null;
+    const containerAR = detectContainerAspectRatio(video);
+    if (containerAR) {
+      bars = computeManualBars(video, containerAR, 'center');
+      if (letagoDebugEnabled()) console.debug('[LetaGo] layout detect', { containerAR: containerAR.toFixed(3), bars });
+    }
+    if (!bars) bars = sampleBars(video);
     if (!bars) return;
     if (barsMatch(bars, lastDetectedBars)) return;
 
@@ -390,7 +589,7 @@
   }
 
   function refresh() {
-    if (!settings.enabled) {
+    if (!settings.enabled || isSuppressedHere()) {
       if (video) resetVideo(video);
       stopScan();
       return;

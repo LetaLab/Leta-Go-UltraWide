@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Leta Go UltraWide",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "description": "Finds black bars around a playing video and crops, zooms, or stretches it to fill the screen.",
   "permissions": ["storage"],
   "content_scripts": [
