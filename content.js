@@ -71,6 +71,7 @@
   let pendingCount = 0;
   let lastDetectedBars = null;          // last CONFIRMED auto-detect reading for the CURRENT video; survives a settings-only change, see applyCurrentCrop()
   let lastAppliedStyleSignature = null; // the transform + transformOrigin string this script itself last wrote, used by the watchdog below to tell "someone else changed this" apart from "that's just our own write"
+  let firstPlayObserved = false;        // has this video fired 'playing' (or already been mid-play when found) at least once, see the fixed-ratio gate in applyCurrentCrop()
   let styleWatchdog = null;
   let mutationTimer = null;
 
@@ -171,6 +172,7 @@
       if (v === video) {
         resetVideo(v);
         lastDetectedBars = null;
+        firstPlayObserved = false;
       }
     });
 
@@ -185,6 +187,16 @@
     });
     v.addEventListener('pause', () => {
       if (v === video) stopScan();
+    });
+
+    // Retries a fixed-ratio crop that applyCurrentCrop() deliberately
+    // held off on while this video had never actually played yet, see
+    // the gate at the top of the fixed-ratio branch there. Harmless to
+    // call again on every later 'playing' too: past the first time, the
+    // gate has nothing left to wait for and this just reapplies the same
+    // crop, the same way the style watchdog and fullscreen handler do.
+    v.addEventListener('playing', () => {
+      if (v === video && settings.mode !== 'auto') applyCurrentCrop();
     });
 
     attachStyleWatchdog(v);
@@ -540,6 +552,34 @@
       return; // not known yet, the scan loop below will call this again once it is
     }
 
+    // Fixed-ratio modes wrap the video unconditionally, there is no
+    // detection to wait on the way auto-detect has (see applyBars() /
+    // ensureWrap()). Without this gate that wrap could land as early as
+    // 'loadedmetadata', while the page's own player may still be doing
+    // its own first-paint DOM work around the video: a DRM license
+    // exchange, ad insertion, swapping a "big play button" overlay for
+    // its real controls once playback starts. A player that later
+    // inserts or removes one of those relative to the video's original
+    // parent throws once that parent no longer directly contains it
+    // (insertBefore on a node that is not a child of the reference
+    // node), which can take the whole player down rather than just
+    // failing to crop. Reproduced against Channel 4's DRM-protected
+    // player: auto-detect never hits this there, because it never wraps
+    // at all on that site, canvas sampling is blocked by the DRM
+    // rendering path (see the catch blocks in sampleBars()) and the
+    // layout-based check does not find anything either, so this simply
+    // brings the fixed-ratio path in line with the safety auto-detect
+    // already had by construction. Waiting for one real 'playing' event
+    // sidesteps it: by the time frames are actually decoding, that
+    // first-paint DOM work is done. Once seen for this video, later
+    // calls (a settings tweak, the style watchdog, a fullscreen toggle)
+    // go through immediately even if paused by then, see the 'playing'
+    // listener in watchVideo().
+    if (!firstPlayObserved) {
+      if (video.paused) return;
+      firstPlayObserved = true;
+    }
+
     const targetAR = targetARFor(settings.mode);
     const bars = targetAR ? computeManualBars(video, targetAR, settings.alignment) : null;
     if (bars) applyBars(video, bars);
@@ -614,6 +654,7 @@
     // applyCurrentCrop() below, not by throwing the bars away here.
     if (isNewVideo) {
       lastDetectedBars = null;
+      firstPlayObserved = false;
     }
 
     if (settings.mode === 'off') {
